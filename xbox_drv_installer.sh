@@ -1,5 +1,6 @@
 #!/bin/bash
 # Bootstrap script
+set -eo pipefail
 
 URL="https://github.com/forkymcforkface/replayos-drivers/releases/latest/download/install.sh"
 chmod -R 755 /opt/xbox-drv
