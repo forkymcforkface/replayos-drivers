@@ -1,59 +1,48 @@
 #!/bin/bash
-set -e
-exec > >(tee "/opt/xbox-drv/install.log") 2>&1
+set -euo pipefail
 
+DIR="/dev/shm/xbox-drv-build"
+trap 'cd / && rm -rf "$DIR"' EXIT
+mkdir -p "$DIR" && cd "$DIR"
+
+exec > >(tee /root/xbox-drv-install.log) 2>&1
 export DEBIAN_FRONTEND=noninteractive
 
-ensure_install() {
-    local MAX_RETRIES=60
-    local COUNT=0
+LOCKS="/var/lib/dpkg/lock /var/lib/apt/lists/lock /var/lib/dpkg/lock-frontend"
 
-    while fuser /var/lib/dpkg/lock >/dev/null 2>&1 || \
-          fuser /var/lib/apt/lists/lock >/dev/null 2>&1 || \
-          fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do
-        
-        if [ "$COUNT" -ge "$MAX_RETRIES" ]; then
-            LOCK_PID=$(fuser /var/lib/dpkg/lock 2>/dev/null)
-            if [ -n "$LOCK_PID" ]; then
-                kill -15 "$LOCK_PID" 2>/dev/null
-                sleep 5
-                if kill -0 "$LOCK_PID" 2>/dev/null; then
-                     kill -9 "$LOCK_PID" 2>/dev/null
-                     rm -f /var/lib/dpkg/lock /var/lib/apt/lists/lock /var/cache/apt/archives/lock
-                fi
-            fi
+wait_for_dpkg_lock() {
+    local i=0
+    while fuser $LOCKS >/dev/null 2>&1; do
+        if [ "$i" -ge 60 ]; then
+            fuser -k -15 $LOCKS >/dev/null 2>&1 || true
+            sleep 5
+            fuser -k -9 $LOCKS >/dev/null 2>&1 || true
             break
         fi
-        
         sleep 2
-        COUNT=$((COUNT+1))
+        i=$((i+1))
     done
-
-    rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock*
+    rm -f $LOCKS /var/cache/apt/archives/lock
     dpkg --configure -a --force-confdef --force-confold
 }
 
-ensure_install
+wait_for_dpkg_lock
 
-apt-get update
-apt-get install -y git dkms build-essential patch libasound2-dev usbutils libarchive-tools curl "linux-headers-$(uname -r)"
+apt-get update -qq
+apt-get install -y -qq git dkms build-essential patch libasound2-dev usbutils libarchive-tools curl "linux-headers-$(uname -r)"
 
-cd /opt/xbox-drv
-
-# install/update xone
+# xone
 rm -rf xone
-git clone --depth 1 "https://github.com/dlundqvist/xone.git" "xone"
-make -j$(nproc) -C xone install
+git clone --depth 1 "https://github.com/dlundqvist/xone.git" xone
+sed -i 's/modprobe -r xpad/true/' xone/install.sh || true
+make -j"$(nproc)" -C xone install
+echo 'xone_dongle' > /etc/modules-load.d/xone.conf
 
-# install/update xpad-noone
+# xpad-noone
 rm -rf xpad-noone-1.0
-git clone --depth 1 "https://github.com/forkymcforkface/xpad-noone.git" "xpad-noone-1.0"
-
-# DKMS handling
-dkms remove -m xpad-noone -v 1.0 --all || true
-mkdir -p /usr/src/xpad-noone-1.0/
-rsync -a --delete xpad-noone-1.0/ /usr/src/xpad-noone-1.0/
-dkms install -m xpad-noone -v 1.0 --force
-
-# Load module
+git clone --depth 1 "https://github.com/forkymcforkface/xpad-noone.git" xpad-noone-1.0
+dkms remove -m xpad-noone -v 1.0 --all >/dev/null 2>&1 || true
+cp -a xpad-noone-1.0/. /usr/src/xpad-noone-1.0/
+dkms install -m xpad-noone -v 1.0 -j "$(nproc)" --force
 echo 'xpad-noone' > /etc/modules-load.d/xpad-noone.conf
+echo "completed"
