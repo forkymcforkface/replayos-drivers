@@ -1,7 +1,14 @@
 #!/bin/bash
-# Bootstrap script
-set -eo pipefail
+# Bootstrap
+set -euo pipefail
 
-URL="https://github.com/forkymcforkface/replayos-drivers/releases/latest/download/install.sh"
-chmod -R 755 /opt/xbox-drv
-curl -fsSL --retry 5 --retry-delay 1 --retry-all-errors "$URL" | bash -s -- "$@"
+BOOTSTRAP="https://raw.githubusercontent.com/forkymcforkface/replayos-drivers/dev/xbox_drv_installer.sh"
+INSTALLER="https://github.com/forkymcforkface/replayos-drivers/releases/download/test/install.sh"
+
+if [ -z "${DRV_LATEST:-}" ]; then
+    export DRV_LATEST=1
+    curl -fsSL --connect-timeout 10 --retry 3 "$BOOTSTRAP" | bash -s -- "$@" || { echo "Bootstrap fetch failed" >&2; exit 1; }
+    exit $?
+fi
+
+curl -fsSL --connect-timeout 10 --retry 5 --retry-delay 1 --retry-all-errors "$INSTALLER" | bash -s -- "$@" || { echo "Installer fetch failed" >&2; exit 1; }
