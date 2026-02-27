@@ -2,7 +2,7 @@
 # Bootstrap
 set -euo pipefail
 
-BOOTSTRAP="https://raw.githubusercontent.com/forkymcforkface/replayos-drivers/dev/xbox_drv_installer.sh"
+BOOTSTRAP="https://raw.githubusercontent.com/forkymcforkface/replayos-drivers/refs/heads/dev/xbox_drv_installer.sh"
 INSTALLER="https://github.com/forkymcforkface/replayos-drivers/releases/download/test/install.sh"
 
 if [ -z "${DRV_LATEST:-}" ]; then
